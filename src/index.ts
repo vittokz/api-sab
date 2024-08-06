@@ -2,6 +2,8 @@ import express, { Application, Request, Response } from "express";
 import morgan from "morgan";
 import cors from "cors";
 import cron from "node-cron";
+import swaggerJSDoc from "swagger-jsdoc";
+import swaggerUi from "swagger-ui-express";
 const pool = require("./database");
 import indexRoutes from "./routes/indexRoutes";
 import authRoutes from "./routes/authRoutes";
@@ -14,6 +16,7 @@ class Server {
     this.app = express();
     this.config();
     this.routes();
+    this.setupSwagger();
   }
 
   config(): void {
@@ -27,7 +30,29 @@ class Server {
   routes(): void {
     this.app.use("/", indexRoutes);
     this.app.use("/api/auth", authRoutes);
-    this.app.use("/api/data", estudiosMedicosRoutes);
+    this.app.use("/api/autorizaciones", estudiosMedicosRoutes);
+  }
+
+  setupSwagger(): void {
+    const swaggerOptions = {
+      definition: {
+        openapi: "3.0.0",
+        info: {
+          title: "API Documentación",
+          version: "1.0.0",
+          description: "Documentación de la API servicios SAP",
+        },
+        servers: [
+          {
+            url: "http://localhost:3000",
+          },
+        ],
+      },
+      apis: ["src/routes/estudiosMedicosRoutes.ts"], // Rutas de tus archivos de rutas
+    };
+
+    const swaggerDocs = swaggerJSDoc(swaggerOptions);
+    this.app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
   }
 
   start(): void {
