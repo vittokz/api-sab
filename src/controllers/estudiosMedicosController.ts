@@ -1,21 +1,19 @@
 import { Request, Response } from "express";
 import * as XLSX from "xlsx";
-import {
-  EnumObservacionesAprobadas,
-} from "../enum/observacionesAprobadas";;
+import { EnumObservacionesAprobadas } from "../enum/observacionesAprobadas";
+import { promisify } from 'util';
 
 const pool = require("../database");
 const regexPatterns = {
   soloNumeros: /^\d{1,20}$/,
-  alfanumericos: /^(?!\s*$).{1,150}$/,
+  alfanumericos: /^(?!\s*$).+/,
   //fecha: /^(0[1-9]|[12][0-9]|3[01])\/(0[1-9]|1[0-2])\/(19|20)\d{2}$/,
   fecha: /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/,
   preautorizacion: /^\s*([^\s].{0,59})?\s*$/,
 };
 const sqlQuery =
-  "SELECT Numero_actual_de_la_prestación AS Numeroactualdelaprestacion, N_DE_AUTORIZACION AS NDEAUTORIZACION,   FECHA_RESPUESTA_EPS AS FECHARESPUESTAEPS,  Fecha_Vencimiento_AUTORIZACION AS FechaVencimientoAUTORIZACION,   NUMERO_PREAUTORIZACION FROM bd_sap.bas_aut_ambulatoria";
-
-  const sqlQueryConceptos = "SELECT * FROM reglas_proceso_auto";
+  "SELECT `Número actual de la prestación` AS Numeroactualdelaprestacion, `N_DE_AUTORIZACION` AS NDEAUTORIZACION,   `FECHA_RESPUESTA_EPS` AS FECHARESPUESTAEPS,   `Fecha_Vencimiento_AUTORIZACION` AS FechaVencimientoAUTORIZACION,   NUMERO_PREAUTORIZACION FROM bas_aut_ambulatoria WHERE estado = 0 LIMIT 500;";
+const sqlQueryConceptos = "SELECT * FROM reglas_proceso_auto";
 
 class EstudiosMedicosController {
   constructor() {
@@ -24,7 +22,8 @@ class EstudiosMedicosController {
     this.listEstudiosMedicosExcel = this.listEstudiosMedicosExcel.bind(this);
     this.processRows = this.processRows.bind(this);
     this.validateRow = this.validateRow.bind(this);
-    this.convertDateFechaAnoMesDiaHora = this.convertDateFechaAnoMesDiaHora.bind(this);
+    this.convertDateFechaAnoMesDiaHora =
+      this.convertDateFechaAnoMesDiaHora.bind(this);
     this.convertDateFormat = this.convertDateFormat.bind(this);
     this.isValidEstado = this.isValidEstado.bind(this);
     this.isValidEstadoPreautorizacion =
@@ -55,22 +54,24 @@ class EstudiosMedicosController {
       const seconds = date.getUTCSeconds().toString().padStart(2, "0");
 
       return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.000Z`;
-    }else{
+    } else {
       return dateString;
     }
   }
 
   validateRow(row: any, rowsConceptos: any) {
     const errors = [];
-    row.FECHARESPUESTAEPS = this.convertDateFechaAnoMesDiaHora(row.FECHARESPUESTAEPS);
-    row.FechaVencimientoAUTORIZACION = this.convertDateFechaAnoMesDiaHora(
-      row.FechaVencimientoAUTORIZACION
-    );
-    console.log(" row.FECHARESPUESTAEPS", row.FECHARESPUESTAEPS);
-    console.log(
-      "row.FechaVencimientoAUTORIZACION",
-      row.FechaVencimientoAUTORIZACION
-    );
+    
+    if(row.FECHARESPUESTAEPS !== null && row.FECHARESPUESTAEPS !== ''){
+      row.FECHARESPUESTAEPS = this.convertDateFechaAnoMesDiaHora(
+        row.FECHARESPUESTAEPS
+      );
+    }
+    if(row.FechaVencimientoAUTORIZACION !== null && row.FechaVencimientoAUTORIZACION !== ''){
+      row.FechaVencimientoAUTORIZACION = this.convertDateFechaAnoMesDiaHora(
+        row.FechaVencimientoAUTORIZACION
+      );
+    }
     let estadoProceso1 = 0;
 
     if (!regexPatterns.soloNumeros.test(row.Numeroactualdelaprestacion)) {
@@ -150,8 +151,10 @@ class EstudiosMedicosController {
       );
     }
     if (
-      !regexPatterns.alfanumericos.test(row.NUMERO_PREAUTORIZACION) &&
-      estadoProceso1 !== 2
+      (!regexPatterns.alfanumericos.test(row.NUMERO_PREAUTORIZACION) &&
+        estadoProceso1 !== 2) ||
+      row.NUMERO_PREAUTORIZACION === null ||
+      row.NUMERO_PREAUTORIZACION === ""
     ) {
       errors.push(
         `Valor no válido en NUMERO_PREAUTORIZACION: ${
@@ -240,26 +243,18 @@ class EstudiosMedicosController {
             );
             const datosValid: any = [];
             validRows.forEach((row: any) => {
-              if(row.FECHARESPUESTAEPS && row.FechaVencimientoAUTORIZACION){
-                row.FECHARESPUESTAEPS= this.convertDateFechaAnoMesDiaHora(row.FECHARESPUESTAEPS);
-                row.FechaVencimientoAUTORIZACION = this.convertDateFechaAnoMesDiaHora(row.FechaVencimientoAUTORIZACION);  
+              if (row.FECHARESPUESTAEPS && row.FechaVencimientoAUTORIZACION) {
+                row.FECHARESPUESTAEPS = this.convertDateFechaAnoMesDiaHora(
+                  row.FECHARESPUESTAEPS
+                );
+                row.FechaVencimientoAUTORIZACION =
+                  this.convertDateFechaAnoMesDiaHora(
+                    row.FechaVencimientoAUTORIZACION
+                  );
               }
               datosValid.push(row);
             });
-
-            //realizar actualizacion del campo estado
-            // validRows.forEach((row: any) => {
-            //   const updateQuery = `UPDATE datos SET estado = 1 WHERE Numeroactualdelaprestacion = ${row.Numeroactualdelaprestacion}`;
-            //   pool.query(updateQuery, (err: any, result: any) => {
-            //     if (err) {
-            //       console.error(`Error actualizando el registro con Numeroactualdelaprestacion ${row.Numeroactualdelaprestacion}:`, err);
-            //     } else {
-            //       console.log(`Registro con id ${row.Numeroactualdelaprestacion} actualizado exitosamente.`);
-            //     }
-            //   });
-            // });
-
-            return res.status(200).json({ datosValid });
+           return res.status(200).json({ datosValid });
           });
         } catch (error) {
           console.error(
@@ -283,15 +278,15 @@ class EstudiosMedicosController {
     const date = new Date(isoDate);
 
     const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0'); // Los meses empiezan desde 0
-    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, "0"); // Los meses empiezan desde 0
+    const day = date.getDate().toString().padStart(2, "0");
 
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, "0");
+    const minutes = date.getMinutes().toString().padStart(2, "0");
+    const seconds = date.getSeconds().toString().padStart(2, "0");
 
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-}
+  }
 
   public async listEstudiosMedicosExcel(req: Request, res: Response) {
     try {
@@ -307,31 +302,68 @@ class EstudiosMedicosController {
             );
             const datosValid: any = [];
             validRows.forEach((row: any) => {
-              if(row.FECHARESPUESTAEPS && row.FechaVencimientoAUTORIZACION){
-                row.FECHARESPUESTAEPS= this.convertDateFechaAnoMesDiaHora(row.FECHARESPUESTAEPS);
-                row.FechaVencimientoAUTORIZACION = this.convertDateFechaAnoMesDiaHora(row.FechaVencimientoAUTORIZACION);  
+              if (row.FECHARESPUESTAEPS && row.FechaVencimientoAUTORIZACION) {
+                row.FECHARESPUESTAEPS = this.convertDateFechaAnoMesDiaHora(
+                  row.FECHARESPUESTAEPS
+                );
+                row.FechaVencimientoAUTORIZACION =
+                  this.convertDateFechaAnoMesDiaHora(
+                    row.FechaVencimientoAUTORIZACION
+                  );
               }
               datosValid.push(row);
             });
 
-            const datosError: any = [];
-            errorsPrimerProceso.forEach((row: any) => {
-              row.row.FECHARESPUESTAEPS= this.convertDateFechaAnoMesDiaHora(row.row.FECHARESPUESTAEPS);
-              row.row.FechaVencimientoAUTORIZACION = this.convertDateFechaAnoMesDiaHora(row.row.FechaVencimientoAUTORIZACION);
-              datosError.push(row.row);
+            const datosError = errorsPrimerProceso.map((item: any) => {
+              // Combinar los datos de row con los errores
+              return {
+                Numeroactualdelaprestacion: item.row.Numeroactualdelaprestacion,
+                NDEAUTORIZACION: item.row.NDEAUTORIZACION,
+                FECHARESPUESTAEPS: item.row.FECHARESPUESTAEPS,
+                FechaVencimientoAUTORIZACION: item.row.FechaVencimientoAUTORIZACION,
+                NUMERO_PREAUTORIZACION: item.row.NUMERO_PREAUTORIZACION,
+                ERRORES: item.errors.join(", ") // Convertir el array de errores en una cadena
+              };
             });
+
+            const queryAsync = promisify(pool.query).bind(pool);
+            const updateRecords = async () => {
+              try {
+                const ids = validRows.map((row: any) => row.Numeroactualdelaprestacion);
+            
+                // Verificar si hay IDs válidos
+                if (ids.length > 0) {
+                  const placeholders = ids.map(() => '?').join(',');
+            
+                  const updateQuery = `
+                    UPDATE bas_aut_ambulatoria 
+                    SET estado = 1 
+                    WHERE \`Número actual de la prestación\` IN (${placeholders});
+                  `;
+            
+                  const results = await queryAsync(updateQuery, ids);
+                  console.log(`Se actualizaron ${results.affectedRows} registros.`);
+                } else {
+                  console.log("No hay registros válidos para actualizar.");
+                }
+              } catch (err) {
+                console.error("Error actualizando registros:", err);
+              }
+            };
+
+            updateRecords();
 
             // Crear un libro de trabajo de Excel
             const wb = XLSX.utils.book_new();
 
             // Agregar la hoja con los datos válidos
             const wsValidRows = XLSX.utils.json_to_sheet(datosValid);
-            XLSX.utils.book_append_sheet(wb, wsValidRows, "Valid Rows");
+            XLSX.utils.book_append_sheet(wb, wsValidRows, "Registros validos");
 
             // Agregar la hoja con los datos con error (si los hay)
             if (datosError.length > 0) {
               const wsErrors = XLSX.utils.json_to_sheet(datosError);
-              XLSX.utils.book_append_sheet(wb, wsErrors, "Errors");
+              XLSX.utils.book_append_sheet(wb, wsErrors, "Registros Error");
             }
 
             // Generar el archivo Excel en formato buffer
@@ -386,8 +418,13 @@ class EstudiosMedicosController {
             );
             const datosError: any = [];
             errorsPrimerProceso.forEach((row: any) => {
-              row.row.FECHARESPUESTAEPS= this.convertDateFechaAnoMesDiaHora(row.row.FECHARESPUESTAEPS);
-              row.row.FechaVencimientoAUTORIZACION = this.convertDateFechaAnoMesDiaHora(row.row.FechaVencimientoAUTORIZACION);
+              // row.row.FECHARESPUESTAEPS = this.convertDateFechaAnoMesDiaHora(
+              //   row.row.FECHARESPUESTAEPS
+              // );
+              // row.row.FechaVencimientoAUTORIZACION =
+              //   this.convertDateFechaAnoMesDiaHora(
+              //     row.row.FechaVencimientoAUTORIZACION
+              //   );
               datosError.push(row.row);
             });
 

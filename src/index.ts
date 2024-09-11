@@ -6,8 +6,11 @@ import swaggerJSDoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 const pool = require("./database");
 import indexRoutes from "./routes/indexRoutes";
+import usuariosRoutes from "./routes/usuariosRoutes";
 import authRoutes from "./routes/authRoutes";
 import estudiosMedicosRoutes from "./routes/estudiosMedicosRoutes";
+
+import { verifyToken } from "./middleware/validarToken";
 
 class Server {
   public app: Application;
@@ -30,7 +33,8 @@ class Server {
   routes(): void {
     this.app.use("/", indexRoutes);
     this.app.use("/api/auth", authRoutes);
-    this.app.use("/api/autorizaciones", estudiosMedicosRoutes);
+    this.app.use("/api/autorizaciones", verifyToken, estudiosMedicosRoutes);
+    this.app.use("/api/usuarios", usuariosRoutes);
   }
 
   setupSwagger(): void {
@@ -48,7 +52,7 @@ class Server {
           },
         ],
       },
-      apis: ["src/routes/estudiosMedicosRoutes.ts"], // Rutas de tus archivos de rutas
+      apis: ["src/routes/estudiosMedicosRoutes.ts","src/routes/usuariosRoutes.ts"], // Rutas de tus archivos de rutas
     };
 
     const swaggerDocs = swaggerJSDoc(swaggerOptions);

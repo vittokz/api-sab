@@ -10,7 +10,7 @@ class AuthRoutes {
     }
 
     config(): void{
-        this.router.get('/', authController.validar); 
+        this.router.post('/', authController.validar); 
     }
 }
 
